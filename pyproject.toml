@@ -1,0 +1,21 @@
+[project]
+name = "amazon"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "niama.belayachi", email = "niama.belayachi@telecomnancy.eu" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "duckdb>=1.5.5",
+    "ijson>=3.5.1",
+    "pandas>=3.0.6",
+]
+
+[project.scripts]
+amazon = "amazon:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"

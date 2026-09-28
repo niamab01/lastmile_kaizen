@@ -1,0 +1,6 @@
+{
+  "RouteID_001": {"station_code": "DAU1", "date_YYYY_MM_DD": "2018-07-23", "departure_time_utc": "15:36:07", "executor_capacity_cm3": 4247527, "route_score": "High",
+    "stops": {"AA": {"lat": 30.3963, "lng": -97.6914, "type": "Station", "zone_id": null}, "AC": {"lat": 30.3994, "lng": -97.6921, "type": "Dropoff", "zone_id": "E-19.3H"}, "AD": {"lat": 30.3938, "lng": -97.6998, "type": "Dropoff", "zone_id": "E-19.3J"}}},
+  "RouteID_002": {"station_code": "DAU1", "date_YYYY_MM_DD": "2018-07-24", "departure_time_utc": "09:05:00", "executor_capacity_cm3": 3313071, "route_score": "Medium",
+    "stops": {"AA": {"lat": 30.40, "lng": -97.70, "type": "Station", "zone_id": null}, "AB": {"lat": 30.41, "lng": -97.71, "type": "Dropoff", "zone_id": "E-20.1A"}}}
+}
