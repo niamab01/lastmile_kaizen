@@ -96,19 +96,18 @@ with open("data/actual_sequences.json", "rb") as f:      # rb + ijson, comme les
 
 
 # 2) ouvrir une connexion DuckDB (en mémoire, rien sur le disque)
-con = duckdb.connect()
+con = duckdb.connect("lastmile.duckdb")
 
-con.register("routes",       pd.DataFrame(lignes))
-con.register("stops",        pd.DataFrame(stops))
-con.register("packages",     pd.DataFrame(packages))
-con.register("travel_times", pd.DataFrame(travel_times))
-con.register("sequences", pd.DataFrame(sequences))
+con.register("routes_df",       pd.DataFrame(lignes))
+con.register("stops_df",        pd.DataFrame(stops))
+con.register("packages_df",     pd.DataFrame(packages))
+con.register("travel_times_df", pd.DataFrame(travel_times))
+con.register("sequences_df", pd.DataFrame(sequences))
 
 # vérifie les 4 comptes d'un coup :
-"""
 for t in ["routes", "stops", "packages", "travel_times", "sequences"]:
-    print(t, con.sql(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
-"""
+    con.execute(f"CREATE OR REPLACE TABLE {t} AS SELECT * FROM {t}_df")
+
 print(con.sql("""
     SELECT a.route_id, SUM(tt.seconds) AS duree_s
     FROM sequences a
@@ -134,5 +133,5 @@ print(con.sql("""
            round(max(duree_s)/3600, 2) AS max_h
     FROM d
 """))
-
+con.close()
 #token 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
