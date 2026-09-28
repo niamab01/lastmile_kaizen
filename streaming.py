@@ -5,12 +5,19 @@ import io
 
 from sanitizer import JsonSanitizer
 
+
 def to_float(x):
     return None if x is None else float(x)  
 
+Stations = {"DLA8"}
+
+keep = set()
 lignes = []
-with open("routes_sample.json", "rb") as f:      # ← note le "rb" (lecture binaire)
+with open("data/route_data.json", "rb") as f:      # ← note le "rb" (lecture binaire)
     for route_id, src in ijson.kvitems(JsonSanitizer(f), ""):
+        if src["station_code"] not in Stations:
+            continue                       # route d'une autre station -> on l'ignore
+        keep.add(route_id)
         ligne = {}
         ligne["station_code"]   = src["station_code"]
         ligne["date"]           = src["date_YYYY_MM_DD"]
@@ -19,11 +26,12 @@ with open("routes_sample.json", "rb") as f:      # ← note le "rb" (lecture bin
         ligne["route_score"]    = src["route_score"]
         ligne["route_id"] = route_id
         lignes.append(ligne)
-print(lignes)
 
 stops = []
-with open("routes_sample.json", "rb") as f:
-    for route_id, src in ijson.kvitems(JsonSanitizer(f), ""):         # boucle extérieure : chaque route
+with open("data/route_data.json", "rb") as f:
+    for route_id, src in ijson.kvitems(JsonSanitizer(f), ""): 
+        if route_id not in keep:
+            continue        
         for stop_id, s in src["stops"].items():  # boucle intérieure : chaque arrêt de CETTE route
             ligne = {}
             ligne["route_id"]  = route_id        # vient de la boucle extérieure
@@ -34,15 +42,13 @@ with open("routes_sample.json", "rb") as f:
             ligne["zone_id"] = s["zone_id"]
             stops.append(ligne)
 
-print(len(stops)) 
-print(stops)
-
-
 
 travel_times = []
 
-with open("travel_times_sample.json", "rb") as f:      # ← note le "rb" (lecture binaire)
-    for route_id, matrix in ijson.kvitems(JsonSanitizer(f), ""):      # ← remplace json.load + la boucle B
+with open("data/travel_times.json", "rb") as f:      # ← note le "rb" (lecture binaire)
+    for route_id, matrix in ijson.kvitems(JsonSanitizer(f), ""):
+        if route_id not in keep:
+            continue      
         for from_stop, destinations in matrix.items():
             for to_stop, seconds in destinations.items():
                 ligne = {}
@@ -52,13 +58,12 @@ with open("travel_times_sample.json", "rb") as f:      # ← note le "rb" (lectu
                 ligne["seconds"]   = to_float(seconds)
                 travel_times.append(ligne)
 
-print(len(travel_times))   # toujours 13 ?
-
-
 
 packages = []
-with open("package_data_real.json", "rb") as f:
-    for route_id, stops_d in ijson.kvitems(JsonSanitizer(f), ""):      # ← remplace json.load + la boucle B
+with open("data/package_data.json", "rb") as f:
+    for route_id, stops_d in ijson.kvitems(JsonSanitizer(f), ""):
+        if route_id not in keep:
+            continue     
         for stop_id, pkgs in stops_d.items():
             for package_id, p in pkgs.items():
                 ligne = {}
@@ -75,13 +80,13 @@ with open("package_data_real.json", "rb") as f:
                 ligne["height_cm"] = to_float(p["dimensions"]["height_cm"])
                 ligne["width_cm"]  = to_float(p["dimensions"]["width_cm"])
                 packages.append(ligne)
-print(len(packages))           
-print(packages[1]["tw_start"])
 
 sequences = []
 
-with open("actual_sequences_sample.json", "rb") as f:      # rb + ijson, comme les autres
+with open("data/actual_sequences.json", "rb") as f:      # rb + ijson, comme les autres
     for route_id, seq in ijson.kvitems(JsonSanitizer(f), ""):
+        if route_id not in keep:
+            continue
         for stop_id, order in seq["actual"].items():
             ligne = {}
             ligne["route_id"] = route_id
@@ -100,7 +105,34 @@ con.register("travel_times", pd.DataFrame(travel_times))
 con.register("sequences", pd.DataFrame(sequences))
 
 # vérifie les 4 comptes d'un coup :
+"""
 for t in ["routes", "stops", "packages", "travel_times", "sequences"]:
     print(t, con.sql(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
+"""
+print(con.sql("""
+    SELECT a.route_id, SUM(tt.seconds) AS duree_s
+    FROM sequences a
+    JOIN sequences b ON a.route_id = b.route_id AND b.visit_order = a.visit_order + 1
+    JOIN travel_times tt ON tt.route_id = a.route_id AND tt.from_stop = a.stop_id AND tt.to_stop = b.stop_id
+    GROUP BY a.route_id
+    ORDER BY duree_s DESC
+    LIMIT 5
+"""))
+
+# et un résumé sur toute la station :
+print(con.sql("""
+    WITH d AS (
+        SELECT a.route_id, SUM(tt.seconds) AS duree_s
+        FROM sequences a
+        JOIN sequences b ON a.route_id=b.route_id AND b.visit_order=a.visit_order+1
+        JOIN travel_times tt ON tt.route_id=a.route_id AND tt.from_stop=a.stop_id AND tt.to_stop=b.stop_id
+        GROUP BY a.route_id
+    )
+    SELECT count(*) AS nb_routes,
+           round(avg(duree_s)/3600, 2) AS duree_moyenne_h,
+           round(min(duree_s)/3600, 2) AS min_h,
+           round(max(duree_s)/3600, 2) AS max_h
+    FROM d
+"""))
 
 #token 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
