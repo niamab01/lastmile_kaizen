@@ -48,3 +48,113 @@ SELECT
     round(100 * avg(service_s) / avg(total_s), 1) AS pct_service   -- part du service en %
 FROM par_route
 """))
+
+print(con.sql("""
+    SELECT
+        COUNT(*)                          AS n_colis,
+        COUNT(DISTINCT service_time_s)    AS nb_valeurs_distinctes,   -- LA question clé
+        round(MIN(service_time_s), 1)     AS min_s,
+        round(MAX(service_time_s), 1)     AS max_s,
+        round(AVG(service_time_s), 1)     AS moy_s,
+        round(MEDIAN(service_time_s), 1)  AS median_s
+    FROM packages
+"""))
+
+#valeurs aberrantes aux requetes précédentes: regarder les extrêmes
+#les plus lents services
+print(con.sql("""
+    SELECT scan_status,
+           round(service_time_s, 1)                       AS service_s,
+           round(depth_cm*height_cm*width_cm/1000, 1)     AS volume_l
+    FROM packages
+    ORDER BY service_time_s DESC
+    LIMIT 10
+"""))
+print(con.sql("""
+    SELECT
+        count(*)                                                   AS total,
+        count(*) FILTER (WHERE scan_status = 'DELIVERED')          AS livres,
+        count(*) FILTER (WHERE scan_status = 'DELIVERED'
+                          AND service_time_s BETWEEN 5 AND 900)    AS livres_plausibles
+    FROM packages
+"""))
+#les plus rapides services
+print(con.sql("""
+    SELECT scan_status, count(*) AS n, round(avg(service_time_s),1) AS moy_s
+    FROM packages
+    WHERE service_time_s < 5
+    GROUP BY scan_status
+"""))
+#Périmètre d'analyse du temps de service : on ne retient que les colis effectivement livrés (scan_status = DELIVERED) avec un temps de service physiquement plausible (entre 5 s et 15 min). Cela écarte 1,7 % des colis — les tentatives de livraison (dont le temps ne reflète pas une livraison) et de rares valeurs aberrantes. 98,3 % des données sont conservées.
+
+#Une ligne par arrêt: cible + deux features évidentes
+print(con.sql("""
+    SELECT
+        route_id,
+        stop_id,
+        SUM(service_time_s)                          AS service_total_s,   -- la CIBLE
+        COUNT(*)                                     AS nb_colis,          -- feature 1
+        SUM(depth_cm*height_cm*width_cm)/1000        AS volume_total_l     -- feature 2
+    FROM packages
+    WHERE scan_status = 'DELIVERED'
+      AND service_time_s BETWEEN 5 AND 900
+    GROUP BY route_id, stop_id
+    ORDER BY service_total_s DESC
+    LIMIT 10
+"""))
+
+
+print(con.sql("""
+    WITH par_arret AS (
+        SELECT route_id, stop_id, SUM(service_time_s) AS service_total_s, COUNT(*) AS nb_colis
+        FROM packages
+        WHERE scan_status = 'DELIVERED' AND service_time_s BETWEEN 5 AND 900
+        GROUP BY route_id, stop_id
+    )
+    SELECT a.route_id, a.stop_id,
+       s.zone_id,
+       split_part(s.zone_id, '-', 1)  AS zone_prefix,
+       seq.visit_order,                         -- la nouvelle feature
+       a.service_total_s, a.nb_colis
+    FROM par_arret a
+    JOIN stops s     ON a.route_id = s.route_id   AND a.stop_id = s.stop_id
+    JOIN sequences seq ON seq.route_id = a.route_id AND seq.stop_id = a.stop_id 
+    ORDER BY a.service_total_s DESC
+    LIMIT 10
+"""))
+
+#valeur distincte de préfixes de zones
+print(con.sql("""
+    SELECT COUNT(DISTINCT zone_id)                    AS zones_completes,
+           COUNT(DISTINCT split_part(zone_id, '-', 1)) AS grandes_zones
+    FROM stops
+"""))
+
+#service en fonction de la zone
+print(con.sql("""
+    WITH par_arret AS (
+        SELECT route_id, stop_id, SUM(service_time_s) AS service_total_s
+        FROM packages
+        WHERE scan_status = 'DELIVERED' AND service_time_s BETWEEN 5 AND 900
+        GROUP BY route_id, stop_id
+    )
+    SELECT split_part(s.zone_id, '-', 1)        AS grande_zone,
+           COUNT(*)                             AS nb_arrets,
+           round(AVG(a.service_total_s), 0)     AS service_moyen_s
+    FROM par_arret a
+    JOIN stops s ON a.route_id = s.route_id AND a.stop_id = s.stop_id
+    GROUP BY grande_zone
+    ORDER BY service_moyen_s DESC
+"""))
+#mesurer la table actuelle: 56630
+print(con.sql("""
+WITH par_arret AS (
+    SELECT route_id, stop_id, SUM(service_time_s) AS service_total_s, COUNT(*) AS nb_colis
+    FROM packages
+    WHERE scan_status = 'DELIVERED' AND service_time_s BETWEEN 5 AND 900
+    GROUP BY route_id, stop_id
+)
+SELECT COUNT(*)
+FROM par_arret a
+JOIN stops s ON a.route_id = s.route_id AND a.stop_id = s.stop_id
+"""))
